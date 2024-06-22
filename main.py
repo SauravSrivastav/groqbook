@@ -46,16 +46,10 @@ class GenerationStatistics:
         self.model_name = model_name
 
     def get_input_speed(self):
-        if self.input_time != 0:
-            return self.input_tokens / self.input_time
-        else:
-            return 0
+        return self.input_tokens / self.input_time if self.input_time > 0 else 0
     
     def get_output_speed(self):
-        if self.output_time != 0:
-            return self.output_tokens / self.output_time
-        else:
-            return 0
+        return self.output_tokens / self.output_time if self.output_time > 0 else 0
     
     def add(self, other):
         if not isinstance(other, GenerationStatistics):
@@ -68,13 +62,15 @@ class GenerationStatistics:
         self.total_time += other.total_time
 
     def __str__(self):
+        total_tokens = self.input_tokens + self.output_tokens
+        total_speed = total_tokens / self.total_time if self.total_time > 0 else 0
+        
         return (f"\n## {self.get_output_speed():.2f} T/s ⚡\nRound trip time: {self.total_time:.2f}s  Model: {self.model_name}\n\n"
                 f"| Metric          | Input          | Output          | Total          |\n"
                 f"|-----------------|----------------|-----------------|----------------|\n"
-                f"| Speed (T/s)     | {self.get_input_speed():.2f}            | {self.get_output_speed():.2f}            | {(self.input_tokens + self.output_tokens) / self.total_time if self.total_time != 0 else 0:.2f}            |\n"
-                f"| Tokens          | {self.input_tokens}            | {self.output_tokens}            | {self.input_tokens + self.output_tokens}            |\n"
+                f"| Speed (T/s)     | {self.get_input_speed():.2f}            | {self.get_output_speed():.2f}            | {total_speed:.2f}            |\n"
+                f"| Tokens          | {self.input_tokens}            | {self.output_tokens}            | {total_tokens}            |\n"
                 f"| Inference Time (s) | {self.input_time:.2f}            | {self.output_time:.2f}            | {self.total_time:.2f}            |")
-
 class Book:
     def __init__(self, structure):
         self.structure = structure

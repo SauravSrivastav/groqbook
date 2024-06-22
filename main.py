@@ -11,18 +11,23 @@ import sys
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", None)
 
+@st.cache_resource
 def download_nltk_data():
     try:
         nltk.data.find('tokenizers/punkt')
         nltk.data.find('taggers/averaged_perceptron_tagger')
     except LookupError:
-        st.info("Downloading required NLTK data. This may take a moment...")
-        nltk.download('punkt')
-        nltk.download('averaged_perceptron_tagger')
-        st.success("NLTK data downloaded successfully!")
-    
+        st.warning("NLTK data is missing. Attempting to download...")
+        try:
+            nltk.download('punkt', quiet=True)
+            nltk.download('averaged_perceptron_tagger', quiet=True)
+            st.success("NLTK data downloaded successfully!")
+        except Exception as e:
+            st.error(f"Failed to download NLTK data: {str(e)}")
+            st.info("Please download NLTK data manually or use a pre-downloaded version.")
+
 # Call the download function at the start
-download_nltk_data()    
+download_nltk_data()
 
 if 'api_key' not in st.session_state:
     st.session_state.api_key = GROQ_API_KEY
@@ -285,10 +290,10 @@ try:
                 label='Download PDF',
                 data=pdf_file,
                 file_name='generated_seo_ebook.pdf',
-                mime='text/plain'
+                mime='application/pdf'
             )
         else:
-            raise ValueError("Please generate content first before downloading the book.")
+            st.warning("Please generate content first before downloading the book.")
 
     with st.form("groqform"):
         if not GROQ_API_KEY:
@@ -313,53 +318,53 @@ try:
 
         if submitted:
             if len(topic_text) < 10:
-                raise ValueError("Book topic must be at least 10 characters long")
+                st.error("Book topic must be at least 10 characters long")
+            else:
+                st.session_state.button_disabled = True
+                st.session_state.statistics_text = "Generating structure in background...."
+                display_statistics()
 
-            st.session_state.button_disabled = True
-            st.session_state.statistics_text = "Generating structure in background...."
-            display_statistics()
+                if not GROQ_API_KEY:
+                    st.session_state.groq = Groq(api_key=groq_input_key)
 
-            if not GROQ_API_KEY:
-                st.session_state.groq = Groq(api_key=groq_input_key)
+                try:
+                    large_model_generation_statistics, book_structure = generate_book_structure(topic_text)
 
-            large_model_generation_statistics, book_structure = generate_book_structure(topic_text)
+                    total_generation_statistics = GenerationStatistics(model_name="llama3-8b-8192")
 
-            total_generation_statistics = GenerationStatistics(model_name="llama3-8b-8192")
+                    book_structure_json = json.loads(book_structure)
+                    book = Book(book_structure_json)
+                    
+                    if 'book' not in st.session_state:
+                        st.session_state.book = book
 
-            try:
-                book_structure_json = json.loads(book_structure)
-                book = Book(book_structure_json)
+                    st.session_state.book.display_structure()
+
+                    def stream_section_content(sections):
+                        for title, content in sections.items():
+                            if isinstance(content, str):
+                                keywords = st.session_state.book.extract_keywords(title)
+                                content_stream = generate_section(title+": "+content, keywords)
+                                for chunk in content_stream:
+                                    chunk_data = chunk
+                                    if isinstance(chunk_data, GenerationStatistics):
+                                        total_generation_statistics.add(chunk_data)
+                                        
+                                        st.session_state.statistics_text = str(total_generation_statistics)
+                                        display_statistics()
+                                    elif chunk is not None:
+                                        st.session_state.book.update_content(title, chunk)
+                            elif isinstance(content, dict):
+                                stream_section_content(content)
+
+                    stream_section_content(book_structure_json)
                 
-                if 'book' not in st.session_state:
-                    st.session_state.book = book
+                except json.JSONDecodeError:
+                    st.error("Failed to decode the book structure. Please try again.")
+                except Exception as e:
+                    st.error(f"An error occurred: {str(e)}")
 
-                print(json.dumps(book_structure_json, indent=2))
-
-                st.session_state.book.display_structure()
-
-                def stream_section_content(sections):
-                    for title, content in sections.items():
-                        if isinstance(content, str):
-                            keywords = st.session_state.book.extract_keywords(title)
-                            content_stream = generate_section(title+": "+content, keywords)
-                            for chunk in content_stream:
-                                chunk_data = chunk
-                                if isinstance(chunk_data, GenerationStatistics):
-                                    total_generation_statistics.add(chunk_data)
-                                    
-                                    st.session_state.statistics_text = str(total_generation_statistics)
-                                    display_statistics()
-                                elif chunk is not None:
-                                    st.session_state.book.update_content(title, chunk)
-                        elif isinstance(content, dict):
-                            stream_section_content(content)
-
-                stream_section_content(book_structure_json)
-            
-            except json.JSONDecodeError:
-                st.error("Failed to decode the book structure. Please try again.")
-
-            enable()
+                enable()
 
 except Exception as e:
     st.session_state.button_disabled = False

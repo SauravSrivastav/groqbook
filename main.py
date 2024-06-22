@@ -6,8 +6,23 @@ from io import BytesIO
 from md2pdf.core import md2pdf
 import re
 from textblob import TextBlob
+import nltk
+import sys
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", None)
+
+def download_nltk_data():
+    try:
+        nltk.data.find('tokenizers/punkt')
+        nltk.data.find('taggers/averaged_perceptron_tagger')
+    except LookupError:
+        st.info("Downloading required NLTK data. This may take a moment...")
+        nltk.download('punkt')
+        nltk.download('averaged_perceptron_tagger')
+        st.success("NLTK data downloaded successfully!")
+    
+# Call the download function at the start
+download_nltk_data()    
 
 if 'api_key' not in st.session_state:
     st.session_state.api_key = GROQ_API_KEY
@@ -66,6 +81,10 @@ class Book:
         toc_columns = st.columns(4)
         self.display_toc(self.structure, toc_columns)
         st.markdown("---")
+        
+    def extract_keywords(self, title):
+        blob = TextBlob(title)
+        return [word for word, pos in blob.tags if pos.startswith('NN')]    
 
     def flatten_structure(self, structure):
         sections = []
@@ -344,4 +363,6 @@ try:
 
 except Exception as e:
     st.session_state.button_disabled = False
-    st.error(e)
+    st.error(f"An error occurred: {str(e)}")
+    if "resource_name" in str(e):
+        st.error("NLTK data is missing. Please run the script again to download the required data.")
